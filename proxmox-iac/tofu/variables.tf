@@ -61,6 +61,22 @@ variable "ssh_public_keys" {
 
 # --- Dev box ---------------------------------------------------------------
 
+variable "dev_keyctl" {
+  type        = bool
+  description = <<-EOT
+    Enable the LXC `keyctl` feature on the dev box. Docker works on current
+    kernels with `nesting` alone, so this defaults to false. Leave it false
+    unless a workload truly needs the kernel keyring: Proxmox restricts setting
+    keyctl to the REAL root@pam user, and an API token — even one belonging to
+    root@pam — is rejected ("changing feature flags (except nesting) is only
+    allowed for root@pam"). So a token-authenticated `tofu apply` cannot set it;
+    you'd have to authenticate the provider as root@pam via username+password,
+    or set it out of band (`pct set <id> --features nesting=1,keyctl=1` as root)
+    and add `lifecycle { ignore_changes = [features] }`.
+  EOT
+  default     = false
+}
+
 variable "dev_vm_id" {
   type        = number
   description = "CTID for the dev box."

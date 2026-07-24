@@ -24,8 +24,12 @@ module "dev_box" {
   disk_size = var.dev_disk_size
 
   # The dev box runs containerised workloads inside an unprivileged LXC.
+  # nesting is enough for Docker on current kernels; keyctl is off by default
+  # because Proxmox only lets the REAL root@pam user set it — an API token (even
+  # root@pam's) is refused, so a token-authenticated `tofu apply` 403s. See
+  # var.dev_keyctl.
   nesting = true
-  keyctl  = true
+  keyctl  = var.dev_keyctl
 
   ipv4_address = var.dev_ipv4_address
   ipv4_gateway = var.dev_ipv4_gateway
