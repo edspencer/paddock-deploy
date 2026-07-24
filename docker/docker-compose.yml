@@ -1,0 +1,102 @@
+# Paddock — Docker Compose recipe (base + devbox).
+#
+# Two profiles, ONE at a time (they both publish the same host port):
+#
+#   docker compose --profile base   up -d   # the lean app image
+#   docker compose --profile devbox up -d   # base + the coding-agent toolbox
+#
+# Copy .env.example to .env and fill in your Claude token first. See README.md.
+#
+# SECURITY — this recipe is closed by default. Both services publish to LOOPBACK
+# ONLY (127.0.0.1:4000), so the instance is reachable only from the host. To
+# reach it from another machine, keep this loopback publish and put a reverse
+# proxy / auth sidecar in front, then set a real PADDOCK_AUTH_MODE (see below and
+# the Securing Paddock guide). Do NOT publish on a routable address (e.g.
+# "0.0.0.0:4000:4000") without a real auth mode in front of it.
+#
+# Why PADDOCK_DANGEROUSLY_ALLOW_OPEN is set here: inside a container the app
+# ALWAYS binds 0.0.0.0 — Docker's port publishing can't route to an in-container
+# 127.0.0.1, so the image binds all interfaces on purpose. Paddock's app-layer
+# fail-closed guard (paddock#435) sees that 0.0.0.0 and, under AUTH_MODE=none,
+# would refuse to boot. For a container the real security boundary is the network
+# namespace plus the loopback host-publish above — NOT the in-container bind — so
+# the recipe sets the guard to let the app start. This does NOT expose Paddock:
+# with the 127.0.0.1 publish it stays host-only. (See the "Scope note" in
+# paddock's bind-safety.ts, which hands the safe-publish posture to this recipe.)
+name: paddock
+
+services:
+  # ---- base ---------------------------------------------------------------
+  # The lean runtime: Paddock app + git, gh, and the claude CLI.
+  paddock:
+    profiles: ["base"]
+    image: ghcr.io/edspencer/paddock:latest
+    restart: unless-stopped
+    # Loopback only — see the SECURITY note at the top of this file.
+    ports:
+      - "127.0.0.1:4000:4000"
+    environment:
+      # Claude Max/Pro auth (runtime: cli). Set in .env. Leave empty and set
+      # ANTHROPIC_API_KEY instead to use the API (runtime: sdk).
+      CLAUDE_CODE_OAUTH_TOKEN: "${CLAUDE_CODE_OAUTH_TOKEN:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      # Optional: lets keepers clone private repos and push to the backing repo.
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      # No built-in login. Default 'none' is correct for the loopback publish
+      # above. To expose beyond the host, front it with a proxy and switch this
+      # to trusted-header|jwt. See the SECURITY note and README.
+      PADDOCK_AUTH_MODE: "${PADDOCK_AUTH_MODE:-none}"
+      # Required for containers — see the SECURITY note at the top of this file.
+      # Safe here ONLY because the publish above is 127.0.0.1-only. If you ever
+      # publish on a routable address, set this to "" and use a real auth mode.
+      PADDOCK_DANGEROUSLY_ALLOW_OPEN: "${PADDOCK_DANGEROUSLY_ALLOW_OPEN:-1}"
+    volumes:
+      # Persistent project store + Claude session transcripts (HOME=/data, so
+      # ~/.claude/projects survives restarts and resume keeps working).
+      - paddock-data:/data
+      # Optional: teach every project your box conventions. Copy
+      # ../CLAUDE.md.example to ./CLAUDE.md, adapt it, and uncomment:
+      # - ./CLAUDE.md:/data/CLAUDE.md:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  # ---- devbox -------------------------------------------------------------
+  # base + the coding-agent toolbox: pm (PM2 preview-server wrapper), ffmpeg,
+  # the Playwright MCP browser (headless Chromium) and the Docker CLI.
+  paddock-devbox:
+    profiles: ["devbox"]
+    image: ghcr.io/edspencer/paddock:devbox
+    restart: unless-stopped
+    # Loopback only — see the SECURITY note at the top of this file.
+    ports:
+      - "127.0.0.1:4000:4000"
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: "${CLAUDE_CODE_OAUTH_TOKEN:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      PADDOCK_AUTH_MODE: "${PADDOCK_AUTH_MODE:-none}"
+      PADDOCK_DANGEROUSLY_ALLOW_OPEN: "${PADDOCK_DANGEROUSLY_ALLOW_OPEN:-1}"
+    volumes:
+      - paddock-data:/data
+      # - ./CLAUDE.md:/data/CLAUDE.md:ro
+      # docker-outside-of-docker: share the HOST daemon's socket, so an
+      # in-container `docker build/run` lands on the host daemon. Cheap and no
+      # nested privilege — but the container then has effectively root-level
+      # control of the host via that socket, so only mount it for keepers you
+      # trust. Comment this out if you don't need in-container Docker.
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Alternative: privileged Docker-in-Docker — a real, ISOLATED daemon inside
+    # the container instead of sharing the host's. It doesn't touch the host
+    # daemon, but `privileged: true` grants broad host capabilities (a weaker
+    # container boundary) and you run/maintain a second daemon + storage. Prefer
+    # the socket mount above unless you specifically need daemon isolation. To
+    # use it, drop the socket volume, run the :dind image as a sidecar, point
+    # DOCKER_HOST at it, and add:
+    #   privileged: true
+
+volumes:
+  paddock-data:
