@@ -1,0 +1,11 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: paddock_manage_service | bool
+
+- name: Restart paddock
+  ansible.builtin.systemd_service:
+    name: paddock
+    state: restarted
+  when: paddock_manage_service | bool

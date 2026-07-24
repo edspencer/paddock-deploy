@@ -1,0 +1,24 @@
+# Managed by Ansible — do not edit by hand.
+[Unit]
+Description=Paddock keeper-agent platform (tarball)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ paddock_user }}
+Group={{ paddock_group }}
+WorkingDirectory={{ paddock_home }}
+EnvironmentFile={{ paddock_data_dir }}/paddock.env
+EnvironmentFile=-{{ paddock_data_dir }}/paddock.secret.env
+ExecStart=/usr/bin/node {{ paddock_home }}/{{ paddock_entrypoint }}
+Restart=on-failure
+RestartSec=5
+
+# Hardening (relaxed enough for an app that shells out to git/gh/claude).
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths={{ paddock_data_dir }}
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,18 @@
+# Copy to hosts.ini and set the real addresses Tofu handed you
+# (`tofu output` prints the dev/home CTIDs; look up their leased IPs, or use the
+# static addresses you assigned). hosts.ini is gitignored.
+
+[dev]
+paddock-dev ansible_host=192.0.2.30
+
+[home]
+paddock-home ansible_host=192.0.2.31
+
+[paddock:children]
+dev
+home
+
+[paddock:vars]
+ansible_user=root
+# If you added a non-root sudo user instead, set ansible_user to that and keep
+# `become = True` (ansible.cfg) so tasks escalate.

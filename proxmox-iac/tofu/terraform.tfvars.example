@@ -1,0 +1,45 @@
+# Copy to terraform.tfvars and fill in your own values.
+# terraform.tfvars is gitignored — never commit real endpoints or tokens.
+# You can also supply any of these as TF_VAR_* environment variables instead.
+
+# --- Proxmox connection (placeholders — replace) ---------------------------
+proxmox_endpoint  = "https://proxmox.example.com:8006/"
+proxmox_api_token = "paddock@pve!tofu=00000000-0000-0000-0000-000000000000"
+
+# Set true only for a self-signed lab certificate.
+proxmox_tls_insecure = false
+
+node_name = "pve"
+
+# --- Debian LXC template ---------------------------------------------------
+# Download once on the node:  pveam update && pveam download local debian-12-standard_12.7-1_amd64.tar.zst
+template_file_id = "local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst"
+
+datastore_id   = "local-lvm"
+network_bridge = "vmbr0"
+
+# SSH keys authorised on both boxes' root user (Ansible connects over these).
+ssh_public_keys = [
+  "ssh-ed25519 AAAA... you@example.com",
+]
+
+# --- Dev box (defaults shown; override as needed) --------------------------
+dev_vm_id        = 130
+dev_hostname     = "paddock-dev"
+dev_cores        = 4
+dev_memory       = 8192
+dev_disk_size    = 40
+dev_ipv4_address = "dhcp"
+# For a static address instead:
+# dev_ipv4_address = "192.0.2.30/24"
+# dev_ipv4_gateway = "192.0.2.1"
+
+# --- Home box --------------------------------------------------------------
+home_vm_id        = 131
+home_hostname     = "paddock-home"
+home_cores        = 2
+home_memory       = 2048
+home_disk_size    = 20
+home_ipv4_address = "dhcp"
+# home_ipv4_address = "192.0.2.31/24"
+# home_ipv4_gateway = "192.0.2.1"

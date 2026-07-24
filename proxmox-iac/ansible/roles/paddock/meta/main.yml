@@ -1,0 +1,16 @@
+---
+galaxy_info:
+  role_name: paddock
+  author: Ed Spencer
+  description: Install tooling and deploy Paddock on a Debian LXC (dev or home box).
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+  galaxy_tags:
+    - paddock
+    - proxmox
+    - lxc
+dependencies: []

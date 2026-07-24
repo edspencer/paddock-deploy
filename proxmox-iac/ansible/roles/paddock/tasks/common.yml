@@ -1,0 +1,98 @@
+---
+# Base tooling present on BOTH boxes: Node, gh, the claude CLI, and the service
+# account + directory layout.
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - git
+      - gnupg
+      - jq
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Ensure keyrings directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+# --- Node.js (NodeSource) --------------------------------------------------
+- name: Add NodeSource signing key
+  ansible.builtin.get_url:
+    url: https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key
+    dest: /etc/apt/keyrings/nodesource.asc
+    mode: "0644"
+
+- name: Add NodeSource apt repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [signed-by=/etc/apt/keyrings/nodesource.asc]
+      https://deb.nodesource.com/node_{{ paddock_node_major }}.x nodistro main
+    filename: nodesource
+    state: present
+
+- name: Install Node.js
+  ansible.builtin.apt:
+    name: nodejs
+    state: present
+    update_cache: true
+
+# --- GitHub CLI ------------------------------------------------------------
+- name: Add GitHub CLI signing key
+  ansible.builtin.get_url:
+    url: https://cli.github.com/packages/githubcli-archive-keyring.gpg
+    dest: /etc/apt/keyrings/githubcli-archive-keyring.gpg
+    mode: "0644"
+
+- name: Add GitHub CLI apt repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch={{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}
+      signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg]
+      https://cli.github.com/packages stable main
+    filename: github-cli
+    state: present
+
+- name: Install GitHub CLI
+  ansible.builtin.apt:
+    name: gh
+    state: present
+    update_cache: true
+
+# --- Claude CLI ------------------------------------------------------------
+- name: Install the claude CLI globally
+  community.general.npm:
+    name: "{{ paddock_claude_npm_package }}"
+    global: true
+    state: present
+
+# --- Service account & layout ---------------------------------------------
+- name: Create paddock group
+  ansible.builtin.group:
+    name: "{{ paddock_group }}"
+    system: true
+
+- name: Create paddock service user
+  ansible.builtin.user:
+    name: "{{ paddock_user }}"
+    group: "{{ paddock_group }}"
+    home: "{{ paddock_home }}"
+    shell: /usr/sbin/nologin
+    system: true
+    create_home: true
+
+- name: Create application and data directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ paddock_user }}"
+    group: "{{ paddock_group }}"
+    mode: "0750"
+  loop:
+    - "{{ paddock_home }}"
+    - "{{ paddock_data_dir }}"
+    - "{{ paddock_data_dir }}/projects"

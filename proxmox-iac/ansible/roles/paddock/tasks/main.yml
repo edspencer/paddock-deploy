@@ -1,0 +1,28 @@
+---
+- name: Assert a known box type
+  ansible.builtin.assert:
+    that: paddock_box_type in ["dev", "home"]
+    fail_msg: "paddock_box_type must be 'dev' or 'home' (got '{{ paddock_box_type }}')."
+
+- name: Base install (Node, gh, claude, service account)
+  ansible.builtin.import_tasks: common.yml
+  tags: [common]
+
+- name: Dev-box tooling (PM2, ffmpeg, browser, Docker)
+  ansible.builtin.import_tasks: devbox.yml
+  when: paddock_box_type == "dev"
+  tags: [devbox]
+
+- name: Instance configuration (env + secrets)
+  ansible.builtin.import_tasks: config.yml
+  tags: [config]
+
+- name: Deploy Paddock (tarball + systemd)
+  ansible.builtin.import_tasks: deploy_tarball.yml
+  when: paddock_deploy_method == "tarball"
+  tags: [deploy]
+
+- name: Deploy Paddock (Docker image)
+  ansible.builtin.import_tasks: deploy_docker.yml
+  when: paddock_deploy_method == "docker"
+  tags: [deploy]

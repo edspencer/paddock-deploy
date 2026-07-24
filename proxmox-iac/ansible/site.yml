@@ -1,0 +1,12 @@
+---
+# Configure both Paddock boxes. The `paddock` role branches on the box's group
+# (dev vs home) via paddock_box_type, set in group_vars/.
+#
+#   ansible-playbook site.yml                 # both boxes
+#   ansible-playbook site.yml --limit dev     # just the dev box
+#   ansible-playbook site.yml --limit home    # just the home box
+- name: Configure Paddock boxes
+  hosts: paddock
+  become: true
+  roles:
+    - paddock
