@@ -50,6 +50,17 @@ spec:
               value: "0.0.0.0"
             - name: PADDOCK_DATA_DIR
               value: /data
+            # A pod has its own network namespace, so the app MUST bind 0.0.0.0
+            # (above) to be reachable by the kubelet probes and the Service — a
+            # container-loopback bind would be unreachable. Paddock's fail-closed
+            # guard refuses to start on a non-loopback bind with auth off, so we
+            # acknowledge it here: the real perimeter is the ClusterIP Service +
+            # the auth Ingress (see ingress.yaml / README "Security"), NOT the
+            # in-pod bind. On a shared/multi-tenant cluster, also add an auth
+            # sidecar (trusted-header) or a NetworkPolicy, since a bare ClusterIP
+            # is reachable by other in-cluster pods.
+            - name: PADDOCK_DANGEROUSLY_ALLOW_OPEN
+              value: "1"
             # Authenticate keeper users at the EDGE (ingress / auth proxy).
             # Paddock has no built-in login. In a cluster the pod is reachable
             # from other pods, so do not leave it open on a routable network
