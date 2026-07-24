@@ -29,14 +29,21 @@ paddock_port: 3000
 # "docker"  -> run the official image via a systemd unit     (alternative)
 paddock_deploy_method: tarball
 
-# Release tarball for the "tarball" method. Point this at the artifact for the
-# version you want (see the README). Leave empty in the container smoke-test to
-# extract a pre-placed /tmp/paddock-release.tar.gz instead.
-paddock_release_url: "https://github.com/edspencer/paddock/releases/latest/download/paddock.tar.gz"
+# Paddock release to deploy with the "tarball" method. PIN a version — IaC
+# should deploy a known release, not a floating "latest" (and GitHub has no
+# stable "latest" tarball URL: the asset name embeds the version). Bump this
+# var to upgrade; a bot like Renovate/Dependabot can watch the paddock releases
+# and open the bump PR for you.
+paddock_version: "0.44.0"
 
-# Entry point inside the extracted tarball, run by Node under systemd. Adjust to
-# match the release layout you deploy.
-paddock_entrypoint: "dist/index.js"
+# Release tarball URL, built from paddock_version. Override only if you host the
+# artifact elsewhere. Leave empty in the container smoke-test to extract a
+# pre-placed /tmp/paddock-release.tar.gz instead.
+paddock_release_url: "https://github.com/edspencer/paddock/releases/download/v{{ paddock_version }}/paddock-{{ paddock_version }}.tgz"
+
+# Entry point inside the extracted tarball, run by Node under systemd. The
+# release is a monorepo, so the server entry lives under packages/server.
+paddock_entrypoint: "packages/server/dist/index.js"
 
 # Image for the "docker" method (overridden per-box in group_vars/).
 paddock_image: "ghcr.io/edspencer/paddock:latest"
