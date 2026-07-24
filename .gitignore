@@ -9,6 +9,9 @@
 .terraform/
 .terraform.lock.hcl
 
+# Kubernetes secrets rendered from *.example.yaml — never commit
+kubernetes/secret.yaml
+
 # Editor / OS cruft
 node_modules/
 .DS_Store

@@ -12,7 +12,7 @@ instance. Pick the recipe that matches where you want to run it.
 | --- | --- | --- |
 | A single VM or LXC container, with Docker | [`docker/`](./docker/) | ✅ ready |
 | Proxmox, as reproducible infra-as-code (dev box + home box, Tofu + Ansible) | [`proxmox-iac/`](./proxmox-iac/) | recipe in [#411](https://github.com/edspencer/paddock/issues/411) |
-| A Kubernetes cluster | [`kubernetes/`](./kubernetes/) | recipe in [#412](https://github.com/edspencer/paddock/issues/412) |
+| A Kubernetes cluster | [`kubernetes/`](./kubernetes/) | ✅ available |
 
 **Not sure?** If you just want it running on one host, start with
 [`docker/`](./docker/) — it's the simplest path and everything else builds on

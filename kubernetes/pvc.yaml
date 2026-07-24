@@ -1,0 +1,26 @@
+# Persistent data volume for Paddock.
+#
+# Paddock is STATEFUL: /data holds the project store, generated herdctl config,
+# and — because HOME=/data in the image — the Claude session transcripts under
+# ~/.claude/projects. Resume depends on this surviving restarts, so this volume
+# must be durable and must NOT be recreated between pod restarts.
+#
+# ReadWriteOnce is deliberate: Paddock is single-writer. Exactly one pod may
+# mount this volume at a time (see deployment.yaml — replicas: 1, Recreate).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: paddock-data
+  labels:
+    app.kubernetes.io/name: paddock
+    app.kubernetes.io/component: data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      # Sessions and transcripts grow over time — size generously.
+      storage: 10Gi
+  # Leave storageClassName unset to use the cluster default provisioner, or pin
+  # it to a durable class (e.g. local-path, longhorn, ebs-csi) for your cluster:
+  # storageClassName: local-path
