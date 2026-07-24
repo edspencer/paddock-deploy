@@ -12,12 +12,19 @@ Everything host-, secret-, and network-specific is a **placeholder** you fill in
 
 | Box | Sizing (default) | Extra features | Tooling installed |
 | --- | --- | --- | --- |
-| **dev** | 4 cores / 8 GiB / 40 GiB | `nesting=1`, `keyctl=1` (so Docker & the devbox tools work inside an unprivileged LXC) | Node, `gh`, `claude`, **plus** PM2, `ffmpeg`, headless Chromium (Playwright MCP), Docker Engine |
+| **dev** | 4 cores / 8 GiB / 40 GiB | `nesting=1` (so Docker & the devbox tools work inside an unprivileged LXC) | Node, `gh`, `claude`, **plus** PM2, `ffmpeg`, headless Chromium (Playwright MCP), Docker Engine |
 | **home** | 2 cores / 2 GiB / 20 GiB | none (lean) | Node, `gh`, `claude` |
 
 Both run Paddock bound to loopback; you authenticate at the edge (reverse proxy
 or auth sidecar) — Paddock ships no built-in password auth. See the repo-root
 [README](../README.md#security-note).
+
+> **Why not `keyctl`?** Docker runs fine in an unprivileged LXC with `nesting`
+> alone on current kernels, so `keyctl` is **off by default** (`dev_keyctl`).
+> Proxmox only lets the *real* `root@pam` user set `keyctl` — an **API token
+> (even root@pam's) is refused** — so enabling it here would make a
+> token-authenticated `tofu apply` fail with a 403. Leave it off unless a
+> workload truly needs the kernel keyring; if so, see `variables.tf > dev_keyctl`.
 
 ## Layout
 

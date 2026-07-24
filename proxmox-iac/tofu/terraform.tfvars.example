@@ -30,6 +30,10 @@ dev_cores        = 4
 dev_memory       = 8192
 dev_disk_size    = 40
 dev_ipv4_address = "dhcp"
+# keyctl stays OFF by default (Docker works with nesting alone). Do NOT set this
+# true with a token-authenticated provider — Proxmox only allows keyctl for the
+# real root@pam user, so `tofu apply` would 403. See variables.tf > dev_keyctl.
+# dev_keyctl = false
 # For a static address instead:
 # dev_ipv4_address = "192.0.2.30/24"
 # dev_ipv4_gateway = "192.0.2.1"
