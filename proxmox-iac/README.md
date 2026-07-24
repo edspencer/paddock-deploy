@@ -45,10 +45,12 @@ proxmox-iac/
   privilege token (e.g. a `paddock@pve` user with a `tofu` token) rather than
   reusing root.
 - A **Debian LXC template** downloaded on the node:
+
   ```
   pveam update
   pveam download local debian-12-standard_12.7-1_amd64.tar.zst
   ```
+
 - Locally: **OpenTofu ≥ 1.6** (or Terraform), **Ansible** (core ≥ 2.15), and an
   **SSH key** whose public half you list in `terraform.tfvars` (Ansible connects
   over it).
