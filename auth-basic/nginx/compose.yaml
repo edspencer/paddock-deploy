@@ -1,0 +1,52 @@
+# Tier-1 auth: an nginx sidecar doing HTTP Basic Auth over TLS in front of
+# Paddock. Paddock itself is NOT published to the host — it is reachable only
+# from the proxy, over a private Compose network. The proxy authenticates the
+# request and injects the user as `X-Forwarded-User`, which Paddock trusts
+# (PADDOCK_AUTH_MODE=trusted-header). See ../README.md for the full write-up.
+#
+# Before `up`, generate the TLS cert and the htpasswd file (see ../README.md):
+#   ./gen-certs.sh localhost
+#   ./gen-htpasswd.sh admin
+
+name: paddock-auth-basic-nginx
+
+services:
+  paddock:
+    image: ${PADDOCK_IMAGE:-ghcr.io/edspencer/paddock:latest}
+    restart: unless-stopped
+    environment:
+      # Trust the identity the proxy establishes. `req.user` is populated from
+      # X-Forwarded-User, so provenance/attribution works (not "anonymous").
+      PADDOCK_AUTH_MODE: trusted-header
+      PADDOCK_AUTH_USER_HEADER: X-Forwarded-User
+    env_file:
+      # Claude + (optional) GitHub tokens. Copy paddock.env.example → paddock.env.
+      # Optional so the recipe still boots for a bare auth smoke-test.
+      - path: paddock.env
+        required: false
+    volumes:
+      - paddock-data:/data
+    networks: [edge]
+    # NOTE: intentionally NO `ports:` — Paddock is never published to the host.
+    # The proxy below is the sole ingress.
+
+  proxy:
+    image: nginx:1.27
+    restart: unless-stopped
+    depends_on: [paddock]
+    ports:
+      # Only the proxy is published. TLS on 443, an HTTP->HTTPS redirect on 80.
+      - "${HTTPS_PORT:-8443}:443"
+      - "${HTTP_PORT:-8080}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./htpasswd:/etc/nginx/htpasswd:ro
+      - ./certs:/etc/nginx/certs:ro
+    networks: [edge]
+
+networks:
+  edge:
+    driver: bridge
+
+volumes:
+  paddock-data:

@@ -1,0 +1,27 @@
+# Caddy Basic-Auth sidecar for Paddock.
+#
+# SITE_ADDRESS controls the site (and thus TLS):
+#   - "localhost" (default)  -> Caddy serves HTTPS with its own internal CA
+#                               (self-signed; use `curl -k` or trust the CA).
+#   - "paddock.example.com"  -> a real hostname makes Caddy provision a public
+#                               Let's Encrypt certificate automatically. Delete
+#                               the `tls internal` line below when you do that.
+{$SITE_ADDRESS:localhost} {
+	# Local development default: self-signed cert from Caddy's internal CA.
+	# Remove this line for a real public hostname (automatic HTTPS via ACME).
+	tls internal
+
+	# HTTP Basic Auth. Generate a bcrypt hash with:
+	#   docker run --rm caddy:2 caddy hash-password --plaintext 'your-password'
+	# then put the username + hash in caddy.env (see caddy.env.example).
+	basic_auth {
+		{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+	}
+
+	reverse_proxy paddock:4000 {
+		# Overwrite (never pass through) the identity header, setting it from
+		# the authenticated Basic Auth user. `header_up X-Forwarded-User …`
+		# REPLACES any client-supplied value, so the header cannot be forged.
+		header_up X-Forwarded-User {http.auth.user.id}
+	}
+}

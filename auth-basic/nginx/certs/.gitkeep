@@ -1,0 +1,2 @@
+# Generated TLS certs land here (paddock.crt / paddock.key) — both gitignored.
+# Run ../gen-certs.sh to create them.
