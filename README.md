@@ -49,6 +49,7 @@ Every recipe here keeps three concerns decoupled:
 docker/          # Docker on a single VM or LXC              (#410)
 proxmox-iac/     # Proxmox infra-as-code: Tofu + Ansible     (#411)
 kubernetes/      # Kubernetes manifests / Helm               (#412)
+auth-basic/      # Basic Auth sidecar (Caddy / nginx) → trusted-header  (#434)
 CLAUDE.md.example  # generic starter instance-wide CLAUDE.md
 LICENSE          # MIT
 ```
@@ -60,6 +61,10 @@ reverse proxy or auth sidecar (nginx, oauth2-proxy, Authelia, Cloudflare Access,
 …). Paddock binds to loopback by default and refuses to start open (non-loopback)
 with authentication disabled. Read the **Securing Paddock** guide at
 https://paddock.edspencer.net before exposing an instance to a network.
+
+Want the simplest turnkey gate? [`auth-basic/`](./auth-basic/) stands up a
+Caddy or nginx **Basic Auth sidecar over TLS** in front of Paddock (Tier 1 in
+the Securing guide's ladder) — no SSO required.
 
 ## License
 

@@ -1,0 +1,8 @@
+# Generated credentials & certs — NEVER commit these.
+**/htpasswd
+**/certs/*.crt
+**/certs/*.key
+
+# Local env files (root .gitignore also covers these; kept here for clarity).
+*.env
+!*.env.example
