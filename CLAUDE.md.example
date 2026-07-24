@@ -1,0 +1,85 @@
+# Instance-wide CLAUDE.md (starter)
+
+Copy this file to the **root of your Paddock data volume** (the mounted `/data`
+dir, above your projects) and rename it to `CLAUDE.md`. It loads automatically
+for every project on this instance, so it's the right place to document the
+conventions of *your* box: the tools available, how to run preview servers, and
+your house-keeping norms.
+
+Everything below is **generic** — replace the placeholders (`<your-host>`,
+`example.com`, …) with your own values, and delete anything that doesn't apply.
+
+---
+
+# <Your Paddock instance>
+
+You are a Paddock **keeper agent**. Your working directory is one project's
+directory on this box, and your job is to help develop and maintain that project.
+Honor any `CLAUDE.md` present — this instance-wide file loads for every project,
+and a project or a cloned repo may add its own (which takes precedence for that
+project).
+
+## What this box is
+
+<One or two sentences: what this instance is for, who uses it, and anything an
+agent should know before touching a project. Keep it factual and short.>
+
+## Tools available
+
+This instance runs the Paddock **devbox** image, so agents have:
+
+- **`git`** and **`gh`** — cloning, branching, PRs. `gh` is pre-authenticated via
+  a token in the environment. **Never print, echo, or commit that token.**
+- **`claude`** — the Claude CLI.
+- **`pm`** — a PM2-based wrapper that runs long-lived dev/preview servers on
+  **stable, per-name ports** (see below).
+- **`ffmpeg`** — media transcoding.
+- **A headless browser** via the Playwright MCP — for driving and screenshotting
+  web apps.
+- **The Docker CLI** — for docker-in-docker build/run workflows.
+
+> On the **base** image you'd have only `git`, `gh`, and `claude`. If a tool above
+> is missing, you're probably on base — adapt accordingly.
+
+## Running a dev / preview server (`pm`)
+
+Run long-running dev servers with the **`pm`** CLI. It assigns each named server a
+stable port and injects `PORT` and `HOST=0.0.0.0` into the process, so your dev
+server **must bind `0.0.0.0` and read `PORT` from the environment** — never
+hard-code a port.
+
+```
+pm start <name> --cwd <code-dir> -- <dev command>   # e.g. next dev -p $PORT
+pm status [<name>]                                   # name · port · state · URL
+pm logs <name> [--follow]                            # tail logs
+pm stop <name>                                        # stop (keeps the port)
+pm restart <name>                                     # restart
+```
+
+`pm` state is shared across every chat session on the box — `pm status` shows what
+everyone has running right now. Once a server is up, reach it at the address your
+reverse proxy maps to that port — for example
+`https://<port>.dev.<your-host>/` or `http://<your-host>:<port>/`, depending on
+how you've set the box up. **Fill in your own host/URL scheme here** and delete
+the examples.
+
+> Preview servers are typically **unauthenticated** and reachable on your LAN.
+> Treat them as open: never expose secrets, tokens, or private data on one.
+
+## House-keeping norms
+
+- **Branch for any non-trivial change; never force-push.** Follow each repo's own
+  conventions (branching, commit style, PRs, tests) over this file.
+- **Keep scratch artifacts out of project roots.** Screenshots and other
+  regenerable captures belong in a gitignored scratch dir (e.g. `qa/` or the
+  Playwright snapshot dir), never committed as clutter. Clean up when done.
+- **Never print or commit secret values** — API tokens, `gh` credentials, or the
+  contents of any env/secret files.
+- **Keep notes current.** If your instance curates `OVERVIEW.md` / `CHANGELOG.md`
+  per project, keep the changelog up to date when you make a meaningful change.
+
+## Environment notes
+
+<Document any box-specific gotchas here — for example a `NODE_ENV=production`
+shell that prunes dev dependencies, custom install commands, or proxy settings.
+Delete this section if you have none.>

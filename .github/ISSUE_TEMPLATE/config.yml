@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Paddock documentation
+    url: https://paddock.edspencer.net
+    about: Guides for installing, configuring, and securing Paddock.

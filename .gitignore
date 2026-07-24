@@ -1,0 +1,14 @@
+# Local env / secrets — never commit
+.env
+*.env
+!*.env.example
+
+# Terraform / OpenTofu state
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Editor / OS cruft
+node_modules/
+.DS_Store
