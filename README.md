@@ -10,7 +10,7 @@ instance. Pick the recipe that matches where you want to run it.
 
 | You want to run Paddock on… | Use | Status |
 | --- | --- | --- |
-| A single VM or LXC container, with Docker | [`docker/`](./docker/) | recipe in [#410](https://github.com/edspencer/paddock/issues/410) |
+| A single VM or LXC container, with Docker | [`docker/`](./docker/) | ✅ ready |
 | Proxmox, as reproducible infra-as-code (dev box + home box, Tofu + Ansible) | [`proxmox-iac/`](./proxmox-iac/) | recipe in [#411](https://github.com/edspencer/paddock/issues/411) |
 | A Kubernetes cluster | [`kubernetes/`](./kubernetes/) | recipe in [#412](https://github.com/edspencer/paddock/issues/412) |
 
