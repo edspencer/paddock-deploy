@@ -11,8 +11,8 @@
 	# Remove this line for a real public hostname (automatic HTTPS via ACME).
 	tls internal
 
-	# HTTP Basic Auth. Generate a bcrypt hash with:
-	#   docker run --rm caddy:2 caddy hash-password --plaintext 'your-password'
+	# HTTP Basic Auth. Generate a bcrypt hash ($$-escaped for Compose) with:
+	#   docker run --rm caddy:2 caddy hash-password --plaintext 'your-password' | sed 's/\$/\$\$/g'
 	# then put the username + hash in caddy.env (see caddy.env.example).
 	basic_auth {
 		{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}

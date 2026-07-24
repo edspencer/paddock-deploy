@@ -37,10 +37,13 @@ Two interchangeable variants, pick one:
 ```bash
 cd caddy
 
-# 1. Credentials. Generate a bcrypt hash for your password:
-docker run --rm caddy:2 caddy hash-password --plaintext 'choose-a-password'
+# 1. Credentials. Generate a bcrypt hash for your password. Pipe through sed to
+#    double every "$" → "$$": a bcrypt hash is full of "$", and current Docker
+#    Compose interpolates env_file values, so an un-escaped hash gets silently
+#    truncated and every login fails.
+docker run --rm caddy:2 caddy hash-password --plaintext 'choose-a-password' | sed 's/\$/\$\$/g'
 cp caddy.env.example caddy.env
-#    → put your username in BASIC_AUTH_USER and the hash in BASIC_AUTH_HASH.
+#    → put your username in BASIC_AUTH_USER and the $$-escaped hash in BASIC_AUTH_HASH.
 
 # 2. (Optional) Paddock tokens, so keepers can actually run:
 cp paddock.env.example paddock.env      # add CLAUDE_CODE_OAUTH_TOKEN, etc.
