@@ -20,6 +20,27 @@
     extra_opts: ["--strip-components=1"]
   notify: Restart paddock
 
+# The release ships source + a lockfile but no node_modules, so install the
+# production dependencies in place (per the release's INSTALL.md). Run as root
+# (the paddock service user is nologin, and the box has no sudo), then hand the
+# tree back to the service user below.
+- name: Install Paddock production dependencies (npm ci)
+  ansible.builtin.command:
+    cmd: npm ci --omit=dev
+    chdir: "{{ paddock_home }}"
+  environment:
+    HOME: "{{ paddock_home }}"
+  changed_when: true
+  when: paddock_release_url | length > 0
+
+- name: Ensure the app tree is owned by the service user
+  ansible.builtin.file:
+    path: "{{ paddock_home }}"
+    owner: "{{ paddock_user }}"
+    group: "{{ paddock_group }}"
+    recurse: true
+  when: paddock_release_url | length > 0
+
 - name: Install the systemd unit (tarball)
   ansible.builtin.template:
     src: paddock.service.j2
