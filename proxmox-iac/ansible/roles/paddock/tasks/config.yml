@@ -1,0 +1,34 @@
+---
+# Instance configuration: the base env file and the operator-supplied secrets.
+
+- name: Write base environment file
+  ansible.builtin.template:
+    src: paddock.env.j2
+    dest: "{{ paddock_data_dir }}/paddock.env"
+    owner: "{{ paddock_user }}"
+    group: "{{ paddock_group }}"
+    mode: "0640"
+  notify: Restart paddock
+
+- name: Install secret env file
+  ansible.builtin.copy:
+    src: "{{ paddock_secret_file }}"
+    dest: "{{ paddock_data_dir }}/paddock.secret.env"
+    owner: "{{ paddock_user }}"
+    group: "{{ paddock_group }}"
+    mode: "0600"
+  when: paddock_secret_file | length > 0
+  notify: Restart paddock
+
+- name: Drop a placeholder instance-wide CLAUDE.md if none present
+  ansible.builtin.copy:
+    content: |
+      # Paddock instance CLAUDE.md (placeholder)
+      #
+      # Replace this with your instance-wide conventions. See CLAUDE.md.example
+      # at the root of the paddock-deploy repo for a starter you can adapt.
+    dest: "{{ paddock_data_dir }}/projects/CLAUDE.md"
+    owner: "{{ paddock_user }}"
+    group: "{{ paddock_group }}"
+    mode: "0640"
+    force: false

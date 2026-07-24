@@ -1,0 +1,4 @@
+---
+# Dev box: full software-engineering tooling.
+paddock_box_type: dev
+paddock_image: "ghcr.io/edspencer/paddock:devbox"

@@ -1,0 +1,23 @@
+# Managed by Ansible — do not edit by hand.
+[Unit]
+Description=Paddock keeper-agent platform (docker)
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+# Container binds the port on loopback of the host; front it with your edge auth.
+ExecStartPre=-/usr/bin/docker rm -f paddock
+ExecStart=/usr/bin/docker run --rm --name paddock \
+  -p {{ paddock_bind_host }}:{{ paddock_port }}:{{ paddock_port }} \
+  --env-file {{ paddock_data_dir }}/paddock.env \
+  --env-file {{ paddock_data_dir }}/paddock.secret.env \
+  -v {{ paddock_data_dir }}:{{ paddock_data_dir }} \
+  {{ paddock_image }}
+ExecStop=/usr/bin/docker stop paddock
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

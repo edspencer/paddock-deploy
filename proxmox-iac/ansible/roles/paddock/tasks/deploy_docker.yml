@@ -1,0 +1,28 @@
+---
+# ALTERNATIVE deploy path: run the official image under a systemd unit. Simpler
+# (tools are baked into the image), but the app runs inside a container rather
+# than directly on the box. Requires Docker (dev box installs it; on the home
+# box set paddock_install_docker=true or install Docker separately).
+
+- name: Pull the Paddock image
+  community.docker.docker_image:
+    name: "{{ paddock_image }}"
+    source: pull
+  when: paddock_manage_service | bool
+
+- name: Install the systemd unit (docker)
+  ansible.builtin.template:
+    src: paddock-docker.service.j2
+    dest: /etc/systemd/system/paddock.service
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart paddock
+
+- name: Enable and start Paddock
+  ansible.builtin.systemd_service:
+    name: paddock
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: paddock_manage_service | bool

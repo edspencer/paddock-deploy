@@ -1,0 +1,57 @@
+---
+# ---------------------------------------------------------------------------
+# Role defaults. Override per-box in group_vars/ or on the command line.
+# ---------------------------------------------------------------------------
+
+# "dev" (full engineering tooling) or "home" (lean). Set in group_vars/.
+paddock_box_type: home
+
+# --- Base tooling ----------------------------------------------------------
+paddock_node_major: 22
+
+# Paddock CLI package (provides the `claude` binary path used by keepers).
+paddock_claude_npm_package: "@anthropic-ai/claude-code"
+
+# --- Service account & layout ----------------------------------------------
+paddock_user: paddock
+paddock_group: paddock
+paddock_home: /opt/paddock          # app code (tarball deploy)
+paddock_data_dir: /var/lib/paddock  # data volume: projects + instance CLAUDE.md
+
+# --- Networking / bind -----------------------------------------------------
+# Paddock binds loopback by default and refuses to start open with auth off.
+# Keep it on loopback and authenticate at the edge (reverse proxy / sidecar).
+paddock_bind_host: "127.0.0.1"
+paddock_port: 3000
+
+# --- Deploy method ---------------------------------------------------------
+# "tarball" -> Node runs the release under a systemd unit   (primary)
+# "docker"  -> run the official image via a systemd unit     (alternative)
+paddock_deploy_method: tarball
+
+# Release tarball for the "tarball" method. Point this at the artifact for the
+# version you want (see the README). Leave empty in the container smoke-test to
+# extract a pre-placed /tmp/paddock-release.tar.gz instead.
+paddock_release_url: "https://github.com/edspencer/paddock/releases/latest/download/paddock.tar.gz"
+
+# Entry point inside the extracted tarball, run by Node under systemd. Adjust to
+# match the release layout you deploy.
+paddock_entrypoint: "dist/index.js"
+
+# Image for the "docker" method (overridden per-box in group_vars/).
+paddock_image: "ghcr.io/edspencer/paddock:latest"
+
+# --- Secrets ---------------------------------------------------------------
+# An env-format file on the CONTROL host, copied to the box as the service's
+# EnvironmentFile. Copy secrets.example.env -> secrets.env and fill it in;
+# secrets.env is gitignored. See the README's secret-file pattern.
+paddock_secret_file: "{{ playbook_dir }}/secrets.env"
+
+# --- Toggles (handy for the container smoke-test) --------------------------
+# Manage/start the systemd service. Turn off where systemd isn't running
+# (e.g. a throwaway Docker container) to exercise install + config only.
+paddock_manage_service: true
+
+# Install the Docker Engine on the dev box (needed for docker-in-docker and for
+# the "docker" deploy method). Turn off in an unprivileged smoke-test container.
+paddock_install_docker: true

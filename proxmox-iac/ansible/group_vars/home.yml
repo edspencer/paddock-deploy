@@ -1,0 +1,4 @@
+---
+# Home box: lean base install, no devbox tooling.
+paddock_box_type: home
+paddock_image: "ghcr.io/edspencer/paddock:latest"

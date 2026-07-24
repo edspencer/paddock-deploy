@@ -3,11 +3,16 @@
 *.env
 !*.env.example
 
-# Terraform / OpenTofu state
+# Terraform / OpenTofu state + local var files
 *.tfstate
 *.tfstate.*
 .terraform/
 .terraform.lock.hcl
+*.tfvars
+!*.tfvars.example
+
+# Ansible local inventory (keep the .example)
+hosts.ini
 
 # Kubernetes secrets rendered from *.example.yaml — never commit
 kubernetes/secret.yaml
