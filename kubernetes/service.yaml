@@ -1,0 +1,21 @@
+# ClusterIP Service fronting the single Paddock pod.
+#
+# Kept internal (ClusterIP) on purpose: expose Paddock through the Ingress (with
+# an auth layer), not by making this Service a LoadBalancer/NodePort. Paddock
+# has no built-in auth, so a bare external Service would be open to anyone who
+# can reach it.
+apiVersion: v1
+kind: Service
+metadata:
+  name: paddock
+  labels:
+    app.kubernetes.io/name: paddock
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: paddock
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

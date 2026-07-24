@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Core resources to stand up Paddock. Apply into a namespace of your choice:
+#   kubectl create namespace paddock
+#   kubectl -n paddock apply -k kubernetes/
+resources:
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  # Uncomment once you've created secret.yaml from secret.example.yaml. (Prefer
+  # `kubectl create secret generic paddock-secrets ...` — see secret.example.yaml.)
+  # - secret.yaml
+  # Uncomment to expose Paddock — edit the host and auth annotations first.
+  # - ingress.yaml
+
+# Pin the image tag for reproducible deploys. Switch to :devbox for the
+# coding-agent toolbox image, or a released version like :v0.43.0 in production.
+images:
+  - name: ghcr.io/edspencer/paddock
+    newTag: latest

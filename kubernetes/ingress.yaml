@@ -1,0 +1,43 @@
+# OPTIONAL Ingress for Paddock.
+#
+# Paddock has NO built-in authentication. This Ingress is only safe once an auth
+# layer sits in front of it — an external auth proxy (oauth2-proxy, Authelia,
+# Authentik, Cloudflare Access) or your ingress controller's auth middleware.
+# The commented annotations below show the nginx external-auth pattern; adapt to
+# your controller. Without one of these, anyone who can reach the host has full
+# control of your keepers.
+#
+# Edit the host, TLS secret, and ingressClassName for your cluster before use.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: paddock
+  labels:
+    app.kubernetes.io/name: paddock
+  annotations:
+    # --- Example: delegate auth to an oauth2-proxy (ingress-nginx) ---
+    # nginx.ingress.kubernetes.io/auth-url: "https://auth.example.com/oauth2/auth"
+    # nginx.ingress.kubernetes.io/auth-signin: "https://auth.example.com/oauth2/start?rd=$escaped_request_uri"
+    # Paddock uses WebSockets for live chat; most controllers proxy them on the
+    # same route with no extra config. Raise proxy read/send timeouts if your
+    # controller closes idle upgrades early.
+    # nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    # nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    {}
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - paddock.example.com
+      secretName: paddock-tls
+  rules:
+    - host: paddock.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: paddock
+                port:
+                  name: http

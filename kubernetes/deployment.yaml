@@ -1,0 +1,106 @@
+# Paddock application Deployment.
+#
+# SINGLE-WRITER / STATEFUL: replicas is 1 and the update strategy is Recreate,
+# never RollingUpdate. Paddock owns a single ReadWriteOnce data volume and is
+# not designed to run two concurrent writers against it. Recreate guarantees the
+# old pod fully terminates (releasing the volume) before the new one starts, so
+# a rollout never briefly runs two Paddocks over the same /data. Do NOT raise
+# replicas above 1 — scale by running separate instances with separate volumes.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paddock
+  labels:
+    app.kubernetes.io/name: paddock
+    app.kubernetes.io/component: app
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: paddock
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: paddock
+        app.kubernetes.io/component: app
+    spec:
+      # A clean SIGTERM lets in-flight keeper turns wind down before the volume
+      # is released to the next pod.
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: paddock
+          # Base image: app + git / gh / claude CLI.
+          # For the coding-agent toolbox (pm, ffmpeg, headless browser, Docker
+          # CLI) switch the tag to :devbox — see README. Pin to a released
+          # version tag (e.g. :v0.43.0) in production rather than :latest.
+          image: ghcr.io/edspencer/paddock:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 4000
+          env:
+            # PORT/HOST/PADDOCK_DATA_DIR/HOME are already baked into the image
+            # (4000, 0.0.0.0, /data, /data). They are restated here so the probes
+            # and Service stay obviously in sync with the container.
+            - name: PORT
+              value: "4000"
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PADDOCK_DATA_DIR
+              value: /data
+            # Authenticate keeper users at the EDGE (ingress / auth proxy).
+            # Paddock has no built-in login. In a cluster the pod is reachable
+            # from other pods, so do not leave it open on a routable network
+            # without an auth layer in front. See README "Security".
+            # - name: PADDOCK_AUTH_MODE
+            #   value: trusted-header
+            # - name: PADDOCK_AUTH_USER_HEADER
+            #   value: X-Forwarded-User
+          # Claude auth (CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY) and the
+          # optional GITHUB_TOKEN come from a Secret you create from
+          # secret.example.yaml. optional: true lets the pod boot without it
+          # (e.g. to verify /api/health) — a valid token is only needed once a
+          # keeper actually runs a turn.
+          envFrom:
+            - secretRef:
+                name: paddock-secrets
+                optional: true
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          # Health is served at /api/health and is always exempt from auth.
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            # Baseline for the base image. The devbox image (headless Chromium,
+            # ffmpeg, in-container builds) wants more headroom — raise limits.
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: paddock-data
+      # If ghcr.io/edspencer/paddock is a private package for you, create a
+      # docker-registry pull secret and reference it here (see README):
+      # imagePullSecrets:
+      #   - name: ghcr-pull
