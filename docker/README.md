@@ -223,29 +223,41 @@ curl -X POST http://127.0.0.1:4000/mcp -H "Authorization: Bearer $TOKEN" -d '{}'
 
 That is Paddock working as designed, not a misconfiguration. Two consequences:
 
-- **To smoke-test locally, run curl *inside* the container**, where loopback
-  really is loopback:
+**To smoke-test the endpoint, run curl *inside* the container**, where loopback
+really is loopback. This is a **same-host check only** — it confirms your token
+and scope resolve, and nothing more. It is not a way to use `/mcp`:
 
-  ```sh
-  docker compose --profile base exec paddock curl -sS -X POST \
-    http://127.0.0.1:4000/mcp \
-    -H "Authorization: Bearer $PADDOCK_MCP_TOKEN_LAPTOP" \
-    -H 'Content-Type: application/json' \
-    -H 'Accept: application/json, text/event-stream' \
-    -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"laptop","version":"1"}}}'
-  ```
+```sh
+docker compose --profile base exec paddock curl -sS -X POST \
+  http://127.0.0.1:4000/mcp \
+  -H "Authorization: Bearer $PADDOCK_MCP_TOKEN_LAPTOP" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"laptop","version":"1"}}}'
+```
 
-- **To actually use `/mcp` from another machine, put TLS in front.** Any proxy
-  that terminates TLS and forwards `X-Forwarded-Proto: https` satisfies the
-  check. [`../auth-basic/`](../auth-basic/) is the ready-made one — it terminates
-  TLS, gates the browser UI with Basic Auth, and exempts `/mcp` so your bearer
-  token reaches Paddock intact. You want TLS regardless: you are shipping a
-  bearer token over the network.
+> **⚠️ Do not "fix" the 403 with `-H 'X-Forwarded-Proto: https'`.** It will
+> appear to work — the request succeeds — and that is the trap. Paddock honours
+> that header from **any** client, with no trusted-proxy check
+> ([paddock#474](https://github.com/edspencer/paddock/issues/474)), so sending it
+> yourself **disables** the plaintext guard rather than satisfying it. Your
+> bearer token then crosses the network in cleartext while the endpoint reports
+> itself as secure. Harmless on loopback where nothing leaves the host; **never
+> send it across a network.** The header is meant to be set by a TLS-terminating
+> proxy, on your behalf, about a connection that really was encrypted.
 
-  If you add **any** edge gate of your own, exempt `/mcp` and
-  `/.well-known/oauth-protected-resource` from it — and only once you are running
-  v0.46.0+, which authenticates `/mcp`. Exempting it on an older build would
-  publish an unauthenticated, turn-spawning endpoint.
+**To actually use `/mcp` from another machine, put TLS in front.**
+[`../auth-basic/`](../auth-basic/) is the ready-made one — despite the name, what
+it gives you here is the **TLS front door**: it terminates HTTPS, forwards
+`X-Forwarded-Proto: https` legitimately, and exempts `/mcp` so your bearer token
+reaches Paddock intact. (It also gates the browser UI with Basic Auth, which you
+want anyway once the instance is reachable from a network.) You want TLS
+regardless: you are shipping a bearer token over the wire.
+
+If you add **any** edge gate of your own, exempt `/mcp` and
+`/.well-known/oauth-protected-resource` from it — and only once you are running
+v0.46.0+, which authenticates `/mcp`. Exempting it on an older build would
+publish an unauthenticated, turn-spawning endpoint.
 
 ### Connect a client
 

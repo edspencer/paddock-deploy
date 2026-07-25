@@ -1,9 +1,20 @@
-# Basic Auth sidecar (Tier 1)
+# TLS front door + Basic Auth sidecar (Tier 1)
 
-A turnkey **Tier-1** auth recipe: a reverse-proxy **sidecar that does HTTP Basic
-Auth over TLS** in front of Paddock. Paddock has no login of its own by design —
-authentication lives at the edge — and this is the *simplest* edge you can stand
-up without running an SSO identity provider.
+A turnkey reverse-proxy sidecar in front of Paddock that does two jobs:
+
+1. **Terminates TLS** — the reason most people end up here. Caddy provisions a
+   real certificate automatically for a public hostname.
+2. **Gates the browser UI with HTTP Basic Auth.** Paddock has no login of its own
+   by design — authentication lives at the edge — and this is the *simplest*
+   edge you can stand up without running an SSO identity provider (Tier 1 of the
+   Securing guide's ladder).
+
+The directory is named for the second job, but you may well be here for the
+first. **Reaching Paddock's Management API (`/mcp`) from another machine
+requires HTTPS** — Paddock refuses `/mcp` over plaintext from a non-loopback
+client — so this is the recipe to reach for even if a password gate isn't what
+you came for. `/mcp` is already exempted from the Basic Auth challenge; see
+[Remote MCP](#remote-mcp-the-management-api).
 
 Two interchangeable variants, pick one:
 

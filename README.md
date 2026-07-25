@@ -18,6 +18,24 @@ instance. Pick the recipe that matches where you want to run it.
 [`docker/`](./docker/) — it's the simplest path and everything else builds on
 the same images.
 
+### …and what goes in front of it?
+
+That table picks *where* Paddock runs. This one picks what it's reachable
+**through** — route by what you need, not by the directory name:
+
+| You need… | Use | What it gives you |
+| --- | --- | --- |
+| Just to run it, reachable from the host | [`docker/`](./docker/) on its own | Loopback publish. No proxy, nothing extra to configure. |
+| **HTTPS** — including to reach `/mcp` from another machine | [`auth-basic/`](./auth-basic/) | A **TLS front door** (Caddy provisions certs automatically), with `/mcp` already exempted. |
+| A password gate on the browser UI as well | [`auth-basic/`](./auth-basic/) | Same recipe — the front door also challenges the UI for Basic Auth credentials. |
+| SSO, MFA, real user accounts | Your own proxy | oauth2-proxy / Authelia / Authentik / Cloudflare Access. Exempt `/mcp` from it — see below. |
+
+> [`auth-basic/`](./auth-basic/) is named for its browser gate, but the part most
+> people come for is **TLS termination**. If you want to reach `/mcp` from
+> another machine, that is the recipe you want — Paddock refuses `/mcp` over
+> plaintext from a non-loopback client, so remote MCP needs HTTPS regardless of
+> whether you care about the password gate.
+
 ## Base vs. devbox images
 
 Paddock ships two official images. All recipes let you pick either one.
@@ -49,7 +67,7 @@ Every recipe here keeps three concerns decoupled:
 docker/          # Docker on a single VM or LXC              (#410)
 proxmox-iac/     # Proxmox infra-as-code: Tofu + Ansible     (#411)
 kubernetes/      # Kubernetes manifests / Helm               (#412)
-auth-basic/      # Basic Auth sidecar (Caddy / nginx) → trusted-header  (#434)
+auth-basic/      # TLS front door (Caddy / nginx) + Basic Auth gate  (#434)
 CLAUDE.md.example  # generic starter instance-wide CLAUDE.md
 LICENSE          # MIT
 ```
@@ -62,9 +80,11 @@ reverse proxy or auth sidecar (nginx, oauth2-proxy, Authelia, Cloudflare Access,
 with authentication disabled. Read the **Securing Paddock** guide at
 https://paddock.edspencer.net before exposing an instance to a network.
 
-Want the simplest turnkey gate? [`auth-basic/`](./auth-basic/) stands up a
-Caddy or nginx **Basic Auth sidecar over TLS** in front of Paddock (Tier 1 in
-the Securing guide's ladder) — no SSO required.
+Want the simplest turnkey front door? [`auth-basic/`](./auth-basic/) stands up a
+Caddy or nginx sidecar that **terminates TLS and gates the browser UI with Basic
+Auth** (Tier 1 in the Securing guide's ladder) — no SSO required. Reach for it
+whenever Paddock needs to be reachable over a network, including for remote
+`/mcp`, which requires HTTPS.
 
 ## Two auth surfaces, not one
 
