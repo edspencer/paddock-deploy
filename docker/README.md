@@ -135,6 +135,162 @@ auth mode in front instead.
 Read the **Securing Paddock** guide at <https://paddock.edspencer.net> before
 exposing an instance to any network.
 
+## Remote MCP (the Management API)
+
+Paddock **v0.46.0+** serves a remote MCP endpoint at **`/mcp`**, so a Claude Code
+session on another machine — or a peer Paddock — can list projects, read chats,
+and (if you let it) start turns on this instance.
+
+This recipe is the **reference configuration** for it, because it has no proxy
+at all: **Paddock authenticates `/mcp` itself**, with a per-client bearer token,
+independently of `PADDOCK_AUTH_MODE` and of any reverse proxy. A proxy is an
+operator's choice, never a prerequisite. The recipes under
+[`../auth-basic/`](../auth-basic/) have to *exempt* `/mcp` from their edge gate
+precisely because the edge was never what protected it.
+
+It is **off until you turn it on**, and it fails closed:
+
+| Request to `/mcp` | Result |
+| --- | --- |
+| No management clients configured | **404** — the endpoint does not exist |
+| No credential | **401** + `WWW-Authenticate: Bearer realm="paddock"` |
+| Wrong bearer token | **401** |
+| Valid bearer token | **200**, MCP session |
+| Plaintext from a non-loopback client | **403** `insecure_transport` |
+
+### Turning it on
+
+**1. Mint a token, one per client.** The `pdk_<instanceId>_` prefix binds it to
+this instance, so a copy is useless at any other Paddock. Minimum 24 characters.
+
+```sh
+printf 'pdk_%s_%s\n' myinstance "$(openssl rand -hex 24)"
+```
+
+**2. Put it in `.env`** (gitignored) as `PADDOCK_MCP_TOKEN_LAPTOP=…`. The compose
+file already passes that variable through to the container.
+
+**3. Declare the client** in `paddock.config.yaml`. The credential is a
+**reference**, never a literal — an inline `token:` is a hard config error,
+because `paddock.config.yaml` is git-tracked and editable from the Settings
+screen, so a secret written there would leak the moment it was committed.
+
+```yaml
+managementApi:
+  instanceId: myinstance
+  # The canonical public origin clients reach this instance at, no trailing
+  # slash. Required. It must be what clients actually type — discovery compares
+  # it byte-for-byte, and it can't be derived from the Host header.
+  publicUrl: https://paddock.example.com
+  clients:
+    laptop:
+      auth:
+        type: token
+        ref: env:PADDOCK_MCP_TOKEN_LAPTOP
+      # No `scope:` ⇒ READ-ONLY (list_*, read_chat) across all projects.
+```
+
+**4. Copy it into the data volume and restart.** Config is read at boot, not
+hot-reloaded:
+
+```sh
+docker compose --profile base cp paddock.config.yaml paddock:/data/paddock.config.yaml
+docker compose --profile base up -d --force-recreate paddock
+docker compose --profile base logs paddock | grep 'management API'
+# -> "management API: /mcp enabled (self-authenticated — independent of
+#     PADDOCK_AUTH_MODE and of any proxy)"
+```
+
+A client whose env var is unset, blank, or under 24 characters is **dropped**
+with a warning rather than failing the boot — and if every client drops, `/mcp`
+reverts to its unconfigured 404. Missing credentials never open the endpoint up.
+
+### `/mcp` needs TLS — and Docker's loopback publish doesn't count
+
+Paddock **refuses** `/mcp` over plaintext from a non-loopback client: a bearer
+token on the wire would be readable in transit. There is a subtlety here that
+will bite you if you don't know it.
+
+**This recipe's `127.0.0.1:4000` publish is not loopback from inside the
+container.** Docker NATs the connection, so the app sees a peer address of
+`172.17.0.1` (the bridge gateway), not `127.0.0.1`. So even from the host
+itself:
+
+```sh
+curl -X POST http://127.0.0.1:4000/mcp -H "Authorization: Bearer $TOKEN" -d '{}'
+# 403 {"error":"https required","code":"insecure_transport", …}
+```
+
+That is Paddock working as designed, not a misconfiguration. Two consequences:
+
+**To smoke-test the endpoint, run curl *inside* the container**, where loopback
+really is loopback. This is a **same-host check only** — it confirms your token
+and scope resolve, and nothing more. It is not a way to use `/mcp`:
+
+```sh
+docker compose --profile base exec paddock curl -sS -X POST \
+  http://127.0.0.1:4000/mcp \
+  -H "Authorization: Bearer $PADDOCK_MCP_TOKEN_LAPTOP" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"laptop","version":"1"}}}'
+```
+
+> **⚠️ Do not "fix" the 403 with `-H 'X-Forwarded-Proto: https'`.** It will
+> appear to work — the request succeeds — and that is the trap. Paddock honours
+> that header from **any** client, with no trusted-proxy check
+> ([paddock#474](https://github.com/edspencer/paddock/issues/474)), so sending it
+> yourself **disables** the plaintext guard rather than satisfying it. Your
+> bearer token then crosses the network in cleartext while the endpoint reports
+> itself as secure. Harmless on loopback where nothing leaves the host; **never
+> send it across a network.** The header is meant to be set by a TLS-terminating
+> proxy, on your behalf, about a connection that really was encrypted.
+
+**To actually use `/mcp` from another machine, put TLS in front.**
+[`../auth-basic/`](../auth-basic/) is the ready-made one — despite the name, what
+it gives you here is the **TLS front door**: it terminates HTTPS, forwards
+`X-Forwarded-Proto: https` legitimately, and exempts `/mcp` so your bearer token
+reaches Paddock intact. (It also gates the browser UI with Basic Auth, which you
+want anyway once the instance is reachable from a network.) You want TLS
+regardless: you are shipping a bearer token over the wire.
+
+If you add **any** edge gate of your own, exempt `/mcp` and
+`/.well-known/oauth-protected-resource` from it — and only once you are running
+v0.46.0+, which authenticates `/mcp`. Exempting it on an older build would
+publish an unauthenticated, turn-spawning endpoint.
+
+### Connect a client
+
+```sh
+claude mcp add --transport http paddock https://paddock.example.com/mcp \
+  --header "Authorization: Bearer $PADDOCK_MCP_TOKEN_LAPTOP"
+```
+
+### Scopes — read-only by default, writes opt-in
+
+Omit `scope:` and a client gets `list_projects`, `list_chats`, `read_chat`,
+`list_triggers` and nothing else. Widen it only deliberately:
+
+```yaml
+      scope:
+        projects: ["my-project"]        # exact slugs or "*"; deny beats allow
+        allow: ["list_*", "read_chat", "send_message"]
+        deny: ["create_project"]
+```
+
+**`create_chat` / `send_message` / `fork_chat*` / `run_trigger` / `set_trigger`
+start keeper turns, and a keeper runs with `Bash` and `Write`.** Granting any of
+them is granting code execution on this host; `create_project` clones a
+caller-supplied git URL. Paddock logs a loud warning at boot when a client's
+scope grants these. Treat such a token exactly like a production secret: one
+token per client, scoped to the projects that client needs, revoked by removing
+the client from the config and restarting.
+
+**OAuth is not shipped yet.** A static bearer token is the only credential that
+works today, so with token-only config
+`/.well-known/oauth-protected-resource/mcp` correctly returns **404** — there is
+no authorization server to advertise.
+
 ## Troubleshooting
 
 - **`curl: (7) Connection refused` right after `up`** — give it a few seconds;
@@ -145,3 +301,9 @@ exposing an instance to any network.
   [Why it's set](#why-paddock_dangerously_allow_open1-is-set-in-the-compose).
 - **Keeper can't push to GitHub** — set `GITHUB_TOKEN` in `.env` and recreate
   the container (`docker compose ... up -d`).
+- **`/mcp` returns `404` with a token you believe is right** — `managementApi`
+  isn't configured, or every client was dropped for an unset/too-short token.
+  Check `docker compose ... logs paddock | grep 'management API'`.
+- **`/mcp` returns `403 insecure_transport`** — expected over plain HTTP through
+  the loopback publish; Docker's NAT means the container doesn't see a loopback
+  peer. See [Remote MCP](#mcp-needs-tls--and-dockers-loopback-publish-doesnt-count).

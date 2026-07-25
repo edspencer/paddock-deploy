@@ -46,6 +46,12 @@ services:
       # above. To expose beyond the host, front it with a proxy and switch this
       # to trusted-header|jwt. See the SECURITY note and README.
       PADDOCK_AUTH_MODE: "${PADDOCK_AUTH_MODE:-none}"
+      # Bearer token for a Management API (/mcp) client, REFERENCED from
+      # /data/paddock.config.yaml as `ref: env:PADDOCK_MCP_TOKEN_LAPTOP` — never
+      # written into that file. Unset by default: with no clients configured
+      # /mcp 404s and the endpoint does not exist. One line per client.
+      # See README "Remote MCP (the Management API)".
+      PADDOCK_MCP_TOKEN_LAPTOP: "${PADDOCK_MCP_TOKEN_LAPTOP:-}"
       # Required for containers — see the SECURITY note at the top of this file.
       # Safe here ONLY because the publish above is 127.0.0.1-only. If you ever
       # publish on a routable address, set this to "" and use a real auth mode.
@@ -79,6 +85,7 @@ services:
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
       PADDOCK_AUTH_MODE: "${PADDOCK_AUTH_MODE:-none}"
+      PADDOCK_MCP_TOKEN_LAPTOP: "${PADDOCK_MCP_TOKEN_LAPTOP:-}"
       PADDOCK_DANGEROUSLY_ALLOW_OPEN: "${PADDOCK_DANGEROUSLY_ALLOW_OPEN:-1}"
     volumes:
       - paddock-data:/data
