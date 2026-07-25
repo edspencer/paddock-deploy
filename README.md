@@ -66,6 +66,51 @@ Want the simplest turnkey gate? [`auth-basic/`](./auth-basic/) stands up a
 Caddy or nginx **Basic Auth sidecar over TLS** in front of Paddock (Tier 1 in
 the Securing guide's ladder) — no SSO required.
 
+## Two auth surfaces, not one
+
+That ladder is about **the browser UI**, and it is only half the picture. From
+**v0.46.0** Paddock also serves a remote MCP endpoint at **`/mcp`** — the
+Management API — so a Claude Code session on your laptop, or a peer Paddock, can
+drive an instance. It has its **own** authentication, and the two are
+**orthogonal**:
+
+| | Browser UI (`/`, `/api/*`) | Management API (`/mcp`) |
+| --- | --- | --- |
+| Who authenticates | Your edge (proxy / SSO / Basic Auth), or `PADDOCK_AUTH_MODE` | **Paddock itself**, always |
+| Credential | Whatever your tier uses (password, SSO session, JWT) | A per-client bearer token |
+| Closed by default | You choose the tier | Yes — **404** until you configure a client |
+
+**Every tier of the ladder keeps working**, because moving up it changes only who
+guards the browser UI. `/mcp` is authenticated by Paddock at every tier,
+including Tier 0 (`PADDOCK_AUTH_MODE=none`, bare on loopback): **a proxy is never
+a prerequisite** for a gated `/mcp`. The [`docker/`](./docker/) recipe is the
+reference for exactly that — no proxy at all, and `/mcp` is still gated.
+
+The catch runs the other way. **Any auth gate at the edge breaks MCP unless you
+exempt `/mcp` from it**, because the edge and the MCP client fight over the same
+header (Basic Auth) or answer with an un-followable HTML login redirect (any SSO
+proxy). Every recipe here that has an edge gate now carries that exemption —
+along with `/.well-known/oauth-protected-resource`, which clients probe before
+they hold any credential:
+
+| Recipe | Where the exemption lives |
+| --- | --- |
+| [`auth-basic/caddy`](./auth-basic/caddy/) | `Caddyfile` — a `handle` block outside `basic_auth` |
+| [`auth-basic/nginx`](./auth-basic/nginx/) | `nginx.conf` — `auth_basic off` locations |
+| [`kubernetes/`](./kubernetes/) | `ingress-mcp.yaml` — a second, un-annotated Ingress |
+| [`docker/`](./docker/) | n/a — no edge to exempt |
+
+> **⚠️ Order of operations.** Apply an edge exemption only *after* you are
+> running a Paddock that authenticates `/mcp` (**v0.46.0+**). On an older build
+> nothing gates `/mcp`, so exempting it would publish an unauthenticated,
+> **turn-spawning** endpoint — and keepers run with shell access, so **any write
+> scope is effectively remote code execution on the host**. That is also why the
+> Management API defaults to **read-only** scope, requires TLS, and takes its
+> tokens **by reference** (an inline token in the config file is a hard error).
+
+Today the only working credential is a **static bearer token**; OAuth is planned
+but not shipped. Each recipe's README has the full setup.
+
 ## License
 
 [MIT](./LICENSE) © Ed Spencer.

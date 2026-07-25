@@ -13,9 +13,14 @@ resources:
   # - secret.yaml
   # Uncomment to expose Paddock — edit the host and auth annotations first.
   # - ingress.yaml
+  # Uncomment ONLY if you run the Management API (/mcp) behind an auth-annotated
+  # ingress: it routes /mcp un-gated so MCP clients reach Paddock's own
+  # authenticator. Requires Paddock v0.46.0+ — read the deploy-ordering warning
+  # at the top of that file first.
+  # - ingress-mcp.yaml
 
 # Pin the image tag for reproducible deploys. Switch to :devbox for the
-# coding-agent toolbox image, or a released version like :v0.43.0 in production.
+# coding-agent toolbox image, or a released version like :0.46.0 in production.
 images:
   - name: ghcr.io/edspencer/paddock
     newTag: latest

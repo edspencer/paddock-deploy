@@ -34,7 +34,7 @@ spec:
           # Base image: app + git / gh / claude CLI.
           # For the coding-agent toolbox (pm, ffmpeg, headless browser, Docker
           # CLI) switch the tag to :devbox — see README. Pin to a released
-          # version tag (e.g. :v0.43.0) in production rather than :latest.
+          # version tag (e.g. :0.46.0) in production rather than :latest.
           image: ghcr.io/edspencer/paddock:latest
           imagePullPolicy: IfNotPresent
           ports:

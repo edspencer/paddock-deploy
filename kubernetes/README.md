@@ -19,6 +19,7 @@ before you touch `replicas`.
 | `pvc.yaml` | `ReadWriteOnce` claim mounted at `/data` (the stateful bit). |
 | `secret.example.yaml` | Template for the Claude / GitHub token Secret. **Never commit real tokens.** |
 | `ingress.yaml` | Optional external route. Only safe behind an auth layer. |
+| `ingress-mcp.yaml` | Optional. Routes `/mcp` past ingress auth, for the Management API. Read its header before applying. |
 
 ## Prerequisites
 
@@ -75,7 +76,7 @@ devbox image only adds *tools*; the conventions for using them (e.g. "run previe
 servers under `pm`") belong in your instance-wide `CLAUDE.md` on the data volume
 (see [`../CLAUDE.md.example`](../CLAUDE.md.example)), never baked into an image.
 
-> Pin a released version tag (e.g. `:v0.43.0` / `:v0.43.0-devbox`) in production
+> Pin a released version tag (e.g. `:0.46.0` / `:0.46.0-devbox`) in production
 > rather than the moving `:latest` / `:devbox`.
 
 ## Statefulness & single-writer
@@ -117,10 +118,164 @@ layer in front.
   identity into a user. Set `PADDOCK_AUTH_MODE` and friends via env in
   `deployment.yaml` (commented examples are there). Health probes are always
   exempt from auth.
+- **If you run the Management API**, whatever auth you put at the ingress must
+  **exempt `/mcp`** or MCP can never reach Paddock — see
+  [Remote MCP](#remote-mcp-the-management-api). That endpoint authenticates
+  itself; the browser auth tier above is orthogonal to it and both keep working.
 
 Paddock uses **WebSockets** for live chat. Most ingress controllers proxy them
 on the same route with no extra config; raise proxy read/send timeouts if yours
 closes idle upgrades early.
+
+## Remote MCP (the Management API)
+
+Paddock **v0.46.0+** serves a remote MCP endpoint at **`/mcp`**, so a Claude Code
+session outside the cluster — or a peer Paddock — can list projects, read chats,
+and (if you let it) start turns on this instance.
+
+**Paddock authenticates `/mcp` itself**, with a per-client bearer token,
+independently of `PADDOCK_AUTH_MODE` and of your ingress. The endpoint fails
+closed: **404** when no management clients are configured, **401** +
+`WWW-Authenticate` when the credential is missing or wrong, **403** for
+plaintext from a non-loopback client. An ingress is never what protects it.
+
+### Exempt `/mcp` from ingress auth
+
+That independence is exactly why an auth layer at the ingress **breaks** MCP
+rather than adding to it:
+
+- An **external-auth / SSO proxy** (oauth2-proxy, Authelia, Authentik,
+  Cloudflare Access) answers an unauthenticated request with a **302 to an HTML
+  login page**. No MCP client can follow that, and discovery needs a real `401` +
+  `WWW-Authenticate`.
+- **Basic Auth** (`nginx.ingress.kubernetes.io/auth-type: basic`) collides
+  head-on: the challenge uses the `Authorization` header, which is exactly where
+  an MCP client puts its `Authorization: Bearer <token>`. The proxy reads that
+  bearer token as malformed Basic credentials and 401s.
+
+ingress-nginx auth annotations are **per-Ingress-resource, not per-path**, and
+there is no "except this path" annotation. So the pattern is a **second Ingress
+object on the same host** carrying no auth annotations and the two exempt paths
+(`/mcp`, `pathType: Exact`; `/.well-known/oauth-protected-resource`,
+`pathType: Prefix`) — its more specific paths win over the gated `path: /`.
+That is [`ingress-mcp.yaml`](./ingress-mcp.yaml), which also sketches the
+equivalent for Traefik, Gateway API and Cloudflare Access.
+
+It is deliberately **not** in `kustomization.yaml`, so `apply -k .` can't enable
+it by accident:
+
+```sh
+kubectl -n paddock apply -f ingress-mcp.yaml
+```
+
+> **⚠️ Deploy order matters.** Apply the exemption only once the running image
+> is **v0.46.0 or newer**. On an older build nothing gates `/mcp` at all, so this
+> Ingress would publish an unauthenticated, **turn-spawning** endpoint — and a
+> keeper runs with a shell, so **any write scope is remote code execution in your
+> cluster**. Roll the image first, confirm `/mcp` answers `404` or `401` on its
+> own, then apply. Paddock's fail-closed 404 is a backstop, not a licence to
+> reorder these steps.
+
+Also exempt the **`/.well-known/oauth-protected-resource`** prefix, not just
+`/mcp`. Clients request the path-inserted form
+`/.well-known/oauth-protected-resource/mcp`; if that path is gated or returns
+HTML instead of JSON, the client silently falls through to treating Paddock as
+its own authorization server, with no error naming the cause.
+
+**TLS is required, not optional.** Paddock refuses `/mcp` over plaintext from a
+non-loopback client — a bearer token would be readable in transit. Terminate TLS
+at the ingress and make sure `X-Forwarded-Proto: https` is forwarded
+(ingress-nginx does by default); that is what satisfies the check.
+
+### Turning it on
+
+**1. Mint a token, one per client** (>= 24 chars; the `pdk_<instanceId>_` prefix
+binds it to this instance, so a copy is useless at any other Paddock):
+
+```sh
+printf 'pdk_%s_%s\n' myinstance "$(openssl rand -hex 24)"
+```
+
+**2. Add it to the Secret** — it reaches the pod via the existing `envFrom`:
+
+```sh
+kubectl -n paddock create secret generic paddock-secrets \
+  --from-literal=CLAUDE_CODE_OAUTH_TOKEN='sk-...' \
+  --from-literal=PADDOCK_MCP_TOKEN_LAPTOP='pdk_myinstance_...' \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+**3. Declare the client** in `paddock.config.yaml` on the data volume. The
+credential is a **reference**, never a literal — an inline `token:` is a hard
+config error, because `paddock.config.yaml` is git-tracked and editable from the
+Settings screen, so a secret written there would leak the moment it was
+committed.
+
+```yaml
+managementApi:
+  instanceId: myinstance
+  # The canonical public origin, no trailing slash. Required, and it must match
+  # your Ingress host — discovery compares it byte-for-byte, and it cannot be
+  # derived from the Host header behind a TLS-terminating ingress.
+  publicUrl: https://paddock.example.com
+  clients:
+    laptop:
+      auth:
+        type: token
+        ref: env:PADDOCK_MCP_TOKEN_LAPTOP
+      # No `scope:` ⇒ READ-ONLY (list_*, read_chat) across all projects.
+```
+
+Write it into the PVC and restart — config is read at boot, not hot-reloaded:
+
+```sh
+kubectl -n paddock cp paddock.config.yaml "$(kubectl -n paddock get pod \
+  -l app.kubernetes.io/name=paddock -o name | cut -d/ -f2)":/data/paddock.config.yaml
+kubectl -n paddock rollout restart deploy/paddock
+kubectl -n paddock logs deploy/paddock | grep 'management API'
+# -> "management API: /mcp enabled (self-authenticated — independent of
+#     PADDOCK_AUTH_MODE and of any proxy)"
+```
+
+A ConfigMap mounted with `subPath` works too, but it lands read-only, so the
+Settings screen can no longer edit the instance config. Prefer writing into the
+volume unless you manage all config as code.
+
+A client whose env var is unset, blank, or under 24 characters is **dropped**
+with a warning rather than failing the boot — and if every client drops, `/mcp`
+reverts to its unconfigured 404. Missing credentials never open the endpoint up.
+
+Then point a client at it:
+
+```sh
+claude mcp add --transport http paddock https://paddock.example.com/mcp \
+  --header "Authorization: Bearer $PADDOCK_MCP_TOKEN_LAPTOP"
+```
+
+### Scopes — read-only by default, writes opt-in
+
+Omit `scope:` and a client gets `list_projects`, `list_chats`, `read_chat`,
+`list_triggers` and nothing else. Widen it only deliberately:
+
+```yaml
+      scope:
+        projects: ["my-project"]        # exact slugs or "*"; deny beats allow
+        allow: ["list_*", "read_chat", "send_message"]
+        deny: ["create_project"]
+```
+
+**`create_chat` / `send_message` / `fork_chat*` / `run_trigger` / `set_trigger`
+start keeper turns, and a keeper runs with `Bash` and `Write`.** Granting any of
+them is granting code execution in your cluster; `create_project` clones a
+caller-supplied git URL. Paddock logs a loud warning at boot when a client's
+scope grants these. One token per client, scoped to the projects that client
+needs; revoke by removing the client from the config and restarting.
+
+**OAuth is not shipped yet.** A static bearer token is the only credential that
+works today, so with token-only config
+`/.well-known/oauth-protected-resource/mcp` correctly returns **404** — there is
+no authorization server to advertise. Exempting the path now means discovery
+starts working the day OAuth lands, without another ingress change.
 
 ## Configuration
 

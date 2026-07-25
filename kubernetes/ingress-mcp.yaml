@@ -1,0 +1,115 @@
+# OPTIONAL: exempt Paddock's Management API (/mcp) from ingress-level auth.
+#
+# Apply this ONLY if you have turned the Management API on AND your main Ingress
+# (ingress.yaml) carries auth annotations. It is deliberately a SEPARATE file,
+# not referenced by kustomization.yaml, so that `apply -k .` can never enable it
+# by accident.
+#
+# ── Why a second Ingress at all ──────────────────────────────────────────────
+# ingress-nginx auth annotations are per-Ingress-RESOURCE, not per-path. There
+# is no "except this path" annotation. The standard way to run one host with
+# different auth on different paths is therefore two Ingress objects on the same
+# host: the gated one (ingress.yaml, `path: /`) and this un-gated one, whose
+# more specific paths win. Other controllers express the same idea differently —
+# see "Other controllers" below.
+#
+# ── Why /mcp must be exempt ──────────────────────────────────────────────────
+# Every common ingress auth layer breaks MCP:
+#   - An external-auth / SSO proxy (oauth2-proxy, Authelia, Authentik,
+#     Cloudflare Access) answers an unauthenticated request with a 302 to an
+#     HTML login page. No MCP client can follow that, and discovery needs a real
+#     401 + WWW-Authenticate.
+#   - Basic Auth (`auth-type: basic`) collides head-on: the challenge uses the
+#     `Authorization` header, which is exactly where an MCP client puts its
+#     `Authorization: Bearer <token>`. The proxy reads the bearer token as
+#     malformed Basic credentials and 401s.
+#
+# ── What still gates it ──────────────────────────────────────────────────────
+# PADDOCK authenticates /mcp itself, with a per-client bearer token, independent
+# of PADDOCK_AUTH_MODE and of any ingress. It fails CLOSED: 404 when no
+# management clients are configured, 401 + WWW-Authenticate when the credential
+# is missing or wrong. The ingress was never what protected it.
+#
+#   !! DEPLOY ORDER !! Apply this ONLY once the running image is a Paddock that
+#   authenticates /mcp — v0.46.0 or newer. On an older build nothing gates /mcp,
+#   so this Ingress would publish an unauthenticated, TURN-SPAWNING endpoint —
+#   and a keeper has a shell, so any write scope on it is remote code execution
+#   in your cluster. Roll the image first, confirm /mcp answers 404 or 401 on
+#   its own (`kubectl port-forward` + curl), and only then apply this.
+#
+# Edit the host and ingressClassName to match ingress.yaml before use.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: paddock-mcp
+  labels:
+    app.kubernetes.io/name: paddock
+    app.kubernetes.io/component: management-api
+  annotations:
+    # DELIBERATELY EMPTY of auth annotations — that absence IS this file. Do not
+    # copy the auth-url/auth-signin annotations from ingress.yaml down here.
+    #
+    # Turn-spawning MCP calls are long-running, so give them the same generous
+    # timeouts the chat WebSocket gets.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  tls:
+    # TLS is REQUIRED, not optional: Paddock refuses /mcp over plaintext from a
+    # non-loopback client, because a bearer token would be readable in transit.
+    # Your controller must also forward X-Forwarded-Proto: https (ingress-nginx
+    # does by default) — that is what satisfies the check behind TLS termination.
+    - hosts:
+        - paddock.example.com
+      secretName: paddock-tls
+  rules:
+    - host: paddock.example.com
+      http:
+        paths:
+          # Exact, not Prefix: a prefix match would also un-gate /mcpanything,
+          # widening the exemption beyond the one route that needs it.
+          - path: /mcp
+            pathType: Exact
+            backend:
+              service:
+                name: paddock
+                port:
+                  name: http
+          # RFC 9728 protected-resource discovery metadata. Exempt for a
+          # different reason: a client fetches this BEFORE it holds any
+          # credential, so gating it makes discovery impossible. Prefix, because
+          # the URL clients actually request is the path-INSERTED form
+          # `/.well-known/oauth-protected-resource/mcp`. A client that gets HTML
+          # or a login redirect here silently falls through to treating Paddock
+          # as its own authorization server, with no error naming the cause.
+          - path: /.well-known/oauth-protected-resource
+            pathType: Prefix
+            backend:
+              service:
+                name: paddock
+                port:
+                  name: http
+# ── Other controllers ────────────────────────────────────────────────────────
+#
+# Traefik — auth is a Middleware, attached per-route. Publish /mcp as its own
+# IngressRoute with NO auth middleware in its `middlewares:` list:
+#
+#   apiVersion: traefik.io/v1alpha1
+#   kind: IngressRoute
+#   spec:
+#     routes:
+#       - match: Host(`paddock.example.com`) && (Path(`/mcp`) || PathPrefix(`/.well-known/oauth-protected-resource`))
+#         kind: Rule
+#         services: [{ name: paddock, port: 4000 }]
+#         # no `middlewares:` — that omission is the exemption
+#
+# HAProxy ingress / Contour / Gateway API — same shape: a second route for the
+# two paths above, carrying no auth filter.
+#
+# Cloudflare Access — add a Bypass policy for `paddock.example.com/mcp*` and
+# `paddock.example.com/.well-known/oauth-protected-resource*` in the Access
+# application, ahead of the Allow policy.
+#
+# oauth2-proxy as a standalone deployment (not an ingress annotation) — route
+# the two paths straight to the Paddock Service instead of through the proxy.
